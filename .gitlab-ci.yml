@@ -1,0 +1,61 @@
+default:
+  image: node:lts-alpine
+
+stages:
+  - test
+  - build
+  - deploy
+
+cache:
+  key: '$CI_PROJECT_ID'
+  paths:
+    - node_modules/
+    - .yarn
+
+# Only run testing against branch other than master.
+lint-and-typecheck:
+  stage: test
+  script:
+    - yarn install --frozen-lockfile --cache-folder .yarn
+    - yarn validate
+
+script-build:
+  stage: build
+  dependencies:
+    - lint-and-typecheck
+  script:
+    - yarn install --frozen-lockfile --cache-folder .yarn
+    - yarn build
+    - yarn build-storybook
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - build/
+      - storybook-static/
+
+deploy-staging:
+  stage: deploy
+  image:
+    name: amazon/aws-cli:latest
+    entrypoint: ['']
+  only:
+    - staging
+    - chore/ci-cd-aws-deployment
+  dependencies:
+    - script-build
+  script:
+    - aws --version
+    - aws s3 sync ./build/ s3://business-staging.moogli.io
+    - aws s3 sync ./storybook-static/ s3://storybook.moogli.io
+
+deploy-production:
+  stage: deploy
+  image:
+    name: amazon/aws-cli:latest
+    entrypoint: ['']
+  only:
+    - main
+  dependencies:
+    - script-build
+  script:
+    - aws s3 sync ./build/ s3://business.moogli.io
